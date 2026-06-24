@@ -40,30 +40,30 @@ func FromEnv() (*Options, error) {
 	if err != nil {
 		return nil, err
 	}
-	// prefix with devpod-
-	retOptions.MachineID = "devpod-" + retOptions.MachineID
+	// prefix with devsy-
+	retOptions.MachineID = "devsy-" + retOptions.MachineID
 
 	retOptions.MachineFolder, err = FromEnvOrError("MACHINE_FOLDER")
 	if err != nil {
 		return nil, err
 	}
 
-	retOptions.MachineType, err = FromEnvOrError("INSTANCE_TYPE")
+	retOptions.MachineType, err = FromEnvOrError(INSTANCE_TYPE)
 	if err != nil {
 		return nil, err
 	}
 
-	retOptions.DiskImage, err = FromEnvOrError("IMAGE_DISK")
+	retOptions.DiskImage, err = FromEnvOrError(IMAGE_DISK)
 	if err != nil {
 		return nil, err
 	}
 
-	retOptions.DiskSizeGB, err = FromEnvOrError("DISK_SIZE")
+	retOptions.DiskSizeGB, err = FromEnvOrError(DISK_SIZE)
 	if err != nil {
 		return nil, err
 	}
 
-	retOptions.Zone, err = FromEnvOrError("REGION")
+	retOptions.Zone, err = FromEnvOrError(REGION)
 	if err != nil {
 		return nil, err
 	}

@@ -10,7 +10,7 @@ variable "state" {
 
 variable "machine_name" {
   type = string
-  default = "devpod-devpod"
+  default = "devsy-devsy"
 }
 
 variable "disk_size" {
@@ -43,9 +43,9 @@ provider "aws" {
 }
 
 
-resource "aws_security_group" "devpod" {
-  name = "devpod"
-  description = "devpod"
+resource "aws_security_group" "devsy" {
+  name = "devsy"
+  description = "devsy"
   vpc_id = "${var.vpc}"
 
   // To Allow SSH Transport
@@ -62,43 +62,43 @@ resource "aws_security_group" "devpod" {
 }
 
 
-resource "aws_instance" "devpod" {
+resource "aws_instance" "devsy" {
   ami = "${var.disk_image}"
   instance_type = "${var.instance_type}"
 
   vpc_security_group_ids = [
-    aws_security_group.devpod.id
+    aws_security_group.devsy.id
   ]
   root_block_device {
     delete_on_termination = true
     volume_size = "${var.disk_size}"
   }
   tags = {
-    Name ="devpod"
-    devpod = "${var.machine_name}"
+    Name = "devsy"
+    devsy = "${var.machine_name}"
   }
 
   user_data = <<EOF
 #!/bin/sh
-useradd devpod -d /home/devpod
-mkdir -p /home/devpod
+useradd devsy -d /home/devsy
+mkdir -p /home/devsy
 if grep -q sudo /etc/groups; then
-  usermod -aG sudo devpod
+  usermod -aG sudo devsy
 elif grep -q wheel /etc/groups; then
-  usermod -aG wheel devpod
+  usermod -aG wheel devsy
 fi
-echo "devpod ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/91-devpod
-mkdir -p /home/devpod/.ssh
-echo "${var.ssh_key}" >> /home/devpod/.ssh/authorized_keys
-chmod 0700 /home/devpod/.ssh
-chmod 0600 /home/devpod/.ssh/authorized_keys
-chown -R devpod:devpod /home/devpod
+echo "devsy ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/91-devsy
+mkdir -p /home/devsy/.ssh
+echo "${var.ssh_key}" >> /home/devsy/.ssh/authorized_keys
+chmod 0700 /home/devsy/.ssh
+chmod 0600 /home/devsy/.ssh/authorized_keys
+chown -R devsy:devsy /home/devsy
 echo "${var.state}"
 EOF
 
-  depends_on = [ aws_security_group.devpod ]
+  depends_on = [ aws_security_group.devsy ]
 }
 
 output "public_ip" {
-  value = aws_instance.devpod.public_ip
+  value = aws_instance.devsy.public_ip
 }

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/loft-sh/devpod-provider-terraform/cmd"
+	"github.com/devsy-org/devsy-provider-terraform/cmd"
 )
 
 func main() {

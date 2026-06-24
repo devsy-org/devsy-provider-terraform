@@ -1,1 +1,3 @@
-{"image":"mcr.microsoft.com/devcontainers/go","build":{}}
+{
+  "image": "ghcr.io/devsy-org/devsy:latest"
+}

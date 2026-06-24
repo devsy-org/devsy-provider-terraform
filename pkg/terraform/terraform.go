@@ -9,20 +9,29 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/loft-sh/devpod-provider-terraform/pkg/options"
-	"github.com/loft-sh/devpod/pkg/client"
-	"github.com/loft-sh/devpod/pkg/config"
-	"github.com/loft-sh/devpod/pkg/log"
-	"github.com/loft-sh/devpod/pkg/ssh"
-	"github.com/pkg/errors"
-
+	"github.com/devsy-org/devsy-provider-terraform/pkg/options"
+	"github.com/devsy-org/devsy/pkg/client"
+	"github.com/devsy-org/devsy/pkg/config"
+	"github.com/devsy-org/devsy/pkg/ssh"
+	"github.com/devsy-org/log"
 	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/hc-install/product"
 	"github.com/hashicorp/hc-install/releases"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/terraform-exec/tfexec"
-
 	cp "github.com/otiai10/copy"
+	"github.com/pkg/errors"
 )
+
+type TerraformProvider struct {
+	Config     *options.Options
+	Log        log.Logger
+	Bin        string
+	Project    string
+	State      string
+	WorkingDir string
+}
 
 func NewProvider(logs log.Logger) (*TerraformProvider, error) {
 	providerConfig, err := options.FromEnv()
@@ -30,12 +39,12 @@ func NewProvider(logs log.Logger) (*TerraformProvider, error) {
 		return nil, err
 	}
 
-	devpodPath, err := config.GetConfigDir()
+	devsyPath, err := config.GetConfigDir()
 	if err != nil {
 		return nil, err
 	}
 
-	terraformPath := devpodPath + "/bin/terraform"
+	terraformPath := filepath.Join(devsyPath, "bin", "terraform")
 
 	project, err := options.FromEnvOrError(options.TERRAFORM_PROJECT)
 	if err != nil {
@@ -48,25 +57,16 @@ func NewProvider(logs log.Logger) (*TerraformProvider, error) {
 		Log:        logs,
 		Bin:        terraformPath,
 		Project:    project,
-		State:      providerConfig.MachineFolder + "/main.tfstate",
-		WorkingDir: providerConfig.MachineFolder + "/.terraform",
+		State:      filepath.Join(providerConfig.MachineFolder, "main.tfstate"),
+		WorkingDir: filepath.Join(providerConfig.MachineFolder, ".terraform"),
 	}
 
 	return provider, nil
 }
 
-type TerraformProvider struct {
-	Config     *options.Options
-	Log        log.Logger
-	Bin        string
-	Project    string
-	State      string
-	WorkingDir string
-}
-
 func EnsureProject(providerTerraform *TerraformProvider) error {
 	// if project is already in place, exit
-	_, err := os.Stat(providerTerraform.Config.MachineFolder + "/.terraform")
+	_, err := os.Stat(providerTerraform.WorkingDir)
 	if err == nil {
 		return nil
 	}
@@ -74,11 +74,12 @@ func EnsureProject(providerTerraform *TerraformProvider) error {
 	// if project is an url, try to clone it
 	if strings.Contains(providerTerraform.Project, "http://") ||
 		strings.Contains(providerTerraform.Project, "https://") {
+		//nolint:gosec // G204: project repo URL comes from trusted provider config
 		cmd := exec.Command(
 			"git",
 			"clone",
 			providerTerraform.Project,
-			providerTerraform.Config.MachineFolder+"/.terraform",
+			providerTerraform.WorkingDir,
 		)
 		return cmd.Run()
 	}
@@ -89,28 +90,26 @@ func EnsureProject(providerTerraform *TerraformProvider) error {
 		return errors.Errorf("terraform project not found")
 	}
 
-	err = cp.Copy(providerTerraform.Project,
-		providerTerraform.Config.MachineFolder+"/.terraform")
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return cp.Copy(providerTerraform.Project, providerTerraform.WorkingDir)
 }
 
-func Init(providerTerraform *TerraformProvider) (*tfexec.Terraform, error) {
+func Init(ctx context.Context, providerTerraform *TerraformProvider) (*tfexec.Terraform, error) {
 	err := EnsureProject(providerTerraform)
 	if err != nil {
 		return nil, err
 	}
 
-	workingDir := providerTerraform.Config.MachineFolder + "/.terraform"
-	tf, err := tfexec.NewTerraform(workingDir, providerTerraform.Bin)
+	err = ensureBackend(providerTerraform)
 	if err != nil {
 		return nil, err
 	}
 
-	err = tf.Init(context.Background(), tfexec.Upgrade(true))
+	tf, err := tfexec.NewTerraform(providerTerraform.WorkingDir, providerTerraform.Bin)
+	if err != nil {
+		return nil, err
+	}
+
+	err = tf.Init(ctx, tfexec.Upgrade(true), tfexec.Reconfigure(true))
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +117,88 @@ func Init(providerTerraform *TerraformProvider) (*tfexec.Terraform, error) {
 	return tf, nil
 }
 
-func Install(providerTerraform *TerraformProvider) error {
+const backendOverrideFile = "devsy_backend_override.tf"
+
+func ensureBackend(providerTerraform *TerraformProvider) error {
+	overridePath := filepath.Join(providerTerraform.WorkingDir, backendOverrideFile)
+
+	hasUserBackend, err := projectHasBackend(providerTerraform.WorkingDir)
+	if err != nil {
+		return err
+	}
+
+	if hasUserBackend {
+		if err := os.Remove(overridePath); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+
+	statePath := filepath.ToSlash(providerTerraform.State)
+	content := fmt.Sprintf(`terraform {
+  backend "local" {
+    path = %q
+  }
+}
+`, statePath)
+
+	return os.WriteFile(overridePath, []byte(content), 0o600)
+}
+
+func projectHasBackend(dir string) (bool, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false, err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Name() == backendOverrideFile {
+			continue
+		}
+		if !strings.HasSuffix(entry.Name(), ".tf") {
+			continue
+		}
+
+		name := entry.Name()
+		content, err := os.ReadFile(filepath.Join(dir, name)) //nolint:gosec // G304: path is within the trusted working dir
+		if err != nil {
+			return false, err
+		}
+
+		file, diags := hclsyntax.ParseConfig(content, name, hcl.InitialPos)
+		if diags.HasErrors() {
+			continue
+		}
+
+		body, ok := file.Body.(*hclsyntax.Body)
+		if !ok {
+			continue
+		}
+		if bodyDeclaresBackend(body) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func bodyDeclaresBackend(body *hclsyntax.Body) bool {
+	for _, block := range body.Blocks {
+		if block.Type != "terraform" {
+			continue
+		}
+		for _, inner := range block.Body.Blocks {
+			if inner.Type == "backend" || inner.Type == "cloud" {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func Install(ctx context.Context, providerTerraform *TerraformProvider) error {
+	//nolint:gosec // G204: terraform binary path is derived from trusted config dir
 	err := exec.Command(providerTerraform.Bin).Run()
 	if err == nil {
 		return nil
@@ -126,7 +206,7 @@ func Install(providerTerraform *TerraformProvider) error {
 
 	destPath := filepath.Dir(providerTerraform.Bin)
 
-	err = os.MkdirAll(destPath, os.ModePerm)
+	err = os.MkdirAll(destPath, 0o750)
 	if err != nil {
 		return err
 	}
@@ -137,43 +217,33 @@ func Install(providerTerraform *TerraformProvider) error {
 		Version:    version.Must(version.NewVersion("1.4.0")),
 	}
 
-	_, err = installer.Install(context.Background())
-	if err != nil {
-		return err
-	}
-
-	return nil
+	_, err = installer.Install(ctx)
+	return err
 }
 
-func Delete(providerTerraform *TerraformProvider) error {
-	tf, err := Init(providerTerraform)
+func Delete(ctx context.Context, providerTerraform *TerraformProvider) error {
+	tf, err := Init(ctx, providerTerraform)
 	if err != nil {
 		return err
 	}
 
-	err = tf.Destroy(context.Background(),
+	return tf.Destroy(
+		ctx,
 		tfexec.Lock(false),
 		tfexec.Refresh(true),
 		tfexec.Parallelism(99),
-		tfexec.State(providerTerraform.State),
 	)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
-func Command(providerTerraform *TerraformProvider, command string) error {
+func Command(ctx context.Context, providerTerraform *TerraformProvider, command string) error {
 	// get private key
 	privateKey, err := ssh.GetPrivateKeyRawBase(providerTerraform.Config.MachineFolder)
-
 	if err != nil {
 		return fmt.Errorf("load private key: %w", err)
 	}
 
 	// get external address
-	externalIP, err := getExternalIP(providerTerraform)
+	externalIP, err := getExternalIP(ctx, providerTerraform)
 	if err != nil || externalIP == "" {
 		return fmt.Errorf(
 			"instance %s doesn't have an external nat ip",
@@ -181,75 +251,60 @@ func Command(providerTerraform *TerraformProvider, command string) error {
 		)
 	}
 
-	sshClient, err := ssh.NewSSHClient("devpod", externalIP+":22", privateKey)
-
+	sshClient, err := ssh.NewSSHClient("devsy", externalIP+":22", privateKey)
 	if err != nil {
 		return errors.Wrap(err, "create ssh client")
 	}
-
-	defer sshClient.Close()
+	defer func() { _ = sshClient.Close() }()
 
 	// run command
-	return ssh.Run(context.Background(), sshClient, command, os.Stdin, os.Stdout, os.Stderr)
+	return ssh.Run(ctx, ssh.RunOptions{
+		Client:  sshClient,
+		Command: command,
+		Stdin:   os.Stdin,
+		Stdout:  os.Stdout,
+		Stderr:  os.Stderr,
+	})
 }
 
-func Create(providerTerraform *TerraformProvider) error {
-	tf, err := Init(providerTerraform)
+func Create(ctx context.Context, providerTerraform *TerraformProvider) error {
+	tf, err := Init(ctx, providerTerraform)
 	if err != nil {
 		return err
 	}
 
-	publicKeyBase, err := ssh.GetPublicKeyBase(providerTerraform.Config.MachineFolder)
+	publicKey, err := publicKey(providerTerraform)
 	if err != nil {
 		return err
 	}
 
-	publicKey, err := base64.StdEncoding.DecodeString(publicKeyBase)
-	if err != nil {
-		return err
-	}
+	vars := terraformVars(providerTerraform, publicKey)
 
-	err = tf.Apply(context.Background(),
+	applyOpts := append([]tfexec.ApplyOption{
 		tfexec.Lock(false),
 		tfexec.Refresh(true),
 		tfexec.Parallelism(99),
-		tfexec.State(providerTerraform.State),
-		tfexec.Var("disk_image="+providerTerraform.Config.DiskImage),
-		tfexec.Var("disk_size="+providerTerraform.Config.DiskSizeGB),
-		tfexec.Var("instance_type="+providerTerraform.Config.MachineType),
-		tfexec.Var("machine_name="+providerTerraform.Config.MachineID),
-		tfexec.Var("region="+providerTerraform.Config.Zone),
-		tfexec.Var("ssh_key="+string(publicKey)),
-	)
-	if err != nil {
-		return err
-	}
-	err = tf.Refresh(context.Background(),
-		tfexec.Lock(false),
-		tfexec.State(providerTerraform.State),
-		tfexec.Var("disk_image="+providerTerraform.Config.DiskImage),
-		tfexec.Var("disk_size="+providerTerraform.Config.DiskSizeGB),
-		tfexec.Var("instance_type="+providerTerraform.Config.MachineType),
-		tfexec.Var("machine_name="+providerTerraform.Config.MachineID),
-		tfexec.Var("region="+providerTerraform.Config.Zone),
-		tfexec.Var("ssh_key="+string(publicKey)),
-	)
+	}, varsToApplyOptions(vars)...)
+
+	err = tf.Apply(ctx, applyOpts...)
 	if err != nil {
 		return err
 	}
 
-	return nil
+	refreshOpts := append([]tfexec.RefreshCmdOption{
+		tfexec.Lock(false),
+	}, varsToRefreshOptions(vars)...)
+
+	return tf.Refresh(ctx, refreshOpts...)
 }
 
-func getExternalIP(providerTerraform *TerraformProvider) (string, error) {
-	tf, err := Init(providerTerraform)
+func getExternalIP(ctx context.Context, providerTerraform *TerraformProvider) (string, error) {
+	tf, err := Init(ctx, providerTerraform)
 	if err != nil {
 		return "", err
 	}
 
-	output, err := tf.Output(context.Background(),
-		tfexec.State(providerTerraform.State),
-	)
+	output, err := tf.Output(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -261,39 +316,27 @@ func getExternalIP(providerTerraform *TerraformProvider) (string, error) {
 	return strings.ReplaceAll(string(output["public_ip"].Value), "\"", ""), nil
 }
 
-func Status(providerTerraform *TerraformProvider) (client.Status, error) {
-	tf, err := Init(providerTerraform)
+func Status(ctx context.Context, providerTerraform *TerraformProvider) (client.Status, error) {
+	tf, err := Init(ctx, providerTerraform)
 	if err != nil {
 		return client.StatusNotFound, err
 	}
 
-	publicKeyBase, err := ssh.GetPublicKeyBase(providerTerraform.Config.MachineFolder)
+	publicKey, err := publicKey(providerTerraform)
 	if err != nil {
 		return client.StatusNotFound, err
 	}
 
-	publicKey, err := base64.StdEncoding.DecodeString(publicKeyBase)
-	if err != nil {
-		return client.StatusNotFound, err
-	}
-	err = tf.Refresh(context.Background(),
+	refreshOpts := append([]tfexec.RefreshCmdOption{
 		tfexec.Lock(false),
-		tfexec.State(providerTerraform.State),
-		tfexec.Var("disk_image="+providerTerraform.Config.DiskImage),
-		tfexec.Var("disk_size="+providerTerraform.Config.DiskSizeGB),
-		tfexec.Var("instance_type="+providerTerraform.Config.MachineType),
-		tfexec.Var("machine_name="+providerTerraform.Config.MachineID),
-		tfexec.Var("region="+providerTerraform.Config.Zone),
-		tfexec.Var("ssh_key="+string(publicKey)),
-	)
+	}, varsToRefreshOptions(terraformVars(providerTerraform, publicKey))...)
+
+	err = tf.Refresh(ctx, refreshOpts...)
 	if err != nil {
 		return client.StatusNotFound, err
 	}
 
-	state, err := tf.ShowStateFile(
-		context.Background(),
-		providerTerraform.State,
-	)
+	state, err := tf.Show(ctx)
 	if err != nil {
 		return client.StatusNotFound, err
 	}
@@ -306,4 +349,47 @@ func Status(providerTerraform *TerraformProvider) (client.Status, error) {
 	}
 
 	return client.StatusBusy, nil
+}
+
+// publicKey loads and decodes the machine's public SSH key.
+func publicKey(providerTerraform *TerraformProvider) (string, error) {
+	publicKeyBase, err := ssh.GetPublicKeyBase(providerTerraform.Config.MachineFolder)
+	if err != nil {
+		return "", err
+	}
+
+	publicKey, err := base64.StdEncoding.DecodeString(publicKeyBase)
+	if err != nil {
+		return "", err
+	}
+
+	return string(publicKey), nil
+}
+
+// terraformVars builds the set of input variables passed to the terraform project.
+func terraformVars(providerTerraform *TerraformProvider, publicKey string) []string {
+	return []string{
+		"disk_image=" + providerTerraform.Config.DiskImage,
+		"disk_size=" + providerTerraform.Config.DiskSizeGB,
+		"instance_type=" + providerTerraform.Config.MachineType,
+		"machine_name=" + providerTerraform.Config.MachineID,
+		"region=" + providerTerraform.Config.Zone,
+		"ssh_key=" + publicKey,
+	}
+}
+
+func varsToApplyOptions(vars []string) []tfexec.ApplyOption {
+	opts := make([]tfexec.ApplyOption, 0, len(vars))
+	for _, v := range vars {
+		opts = append(opts, tfexec.Var(v))
+	}
+	return opts
+}
+
+func varsToRefreshOptions(vars []string) []tfexec.RefreshCmdOption {
+	opts := make([]tfexec.RefreshCmdOption, 0, len(vars))
+	for _, v := range vars {
+		opts = append(opts, tfexec.Var(v))
+	}
+	return opts
 }
