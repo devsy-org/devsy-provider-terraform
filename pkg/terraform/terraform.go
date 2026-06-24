@@ -159,27 +159,35 @@ func projectHasBackend(dir string) (bool, error) {
 			continue
 		}
 
-		name := entry.Name()
-		content, err := os.ReadFile(filepath.Join(dir, name)) //nolint:gosec // G304: path is within the trusted working dir
+		found, err := fileDeclaresBackend(filepath.Join(dir, entry.Name()))
 		if err != nil {
 			return false, err
 		}
-
-		file, diags := hclsyntax.ParseConfig(content, name, hcl.InitialPos)
-		if diags.HasErrors() {
-			continue
-		}
-
-		body, ok := file.Body.(*hclsyntax.Body)
-		if !ok {
-			continue
-		}
-		if bodyDeclaresBackend(body) {
+		if found {
 			return true, nil
 		}
 	}
 
 	return false, nil
+}
+
+func fileDeclaresBackend(path string) (bool, error) {
+	content, err := os.ReadFile(path) //nolint:gosec // G304: path is within the trusted working dir
+	if err != nil {
+		return false, err
+	}
+
+	file, diags := hclsyntax.ParseConfig(content, filepath.Base(path), hcl.InitialPos)
+	if diags.HasErrors() {
+		return false, nil
+	}
+
+	body, ok := file.Body.(*hclsyntax.Body)
+	if !ok {
+		return false, nil
+	}
+
+	return bodyDeclaresBackend(body), nil
 }
 
 func bodyDeclaresBackend(body *hclsyntax.Body) bool {
