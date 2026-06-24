@@ -1,4 +1,7 @@
-tags
-devpod-provider-terraform
-*.vim
+release
 env
+devsy-provider-terraform
+.idea
+dist
+tags
+*.vim

@@ -2,49 +2,38 @@ package cmd
 
 import (
 	"context"
+	"path/filepath"
 
-	"github.com/loft-sh/devpod-provider-terraform/pkg/options"
-	"github.com/loft-sh/devpod-provider-terraform/pkg/terraform"
-
-	"github.com/loft-sh/devpod/pkg/config"
-	"github.com/loft-sh/devpod/pkg/log"
-	"github.com/loft-sh/devpod/pkg/provider"
+	"github.com/devsy-org/devsy-provider-terraform/pkg/options"
+	"github.com/devsy-org/devsy-provider-terraform/pkg/terraform"
+	"github.com/devsy-org/devsy/pkg/config"
+	"github.com/devsy-org/log"
 	"github.com/spf13/cobra"
 )
 
-// InitCmd holds the cmd flags
+// InitCmd holds the cmd flags.
 type InitCmd struct{}
 
-// NewInitCmd defines a init
+// NewInitCmd defines a init.
 func NewInitCmd() *cobra.Command {
 	cmd := &InitCmd{}
-	initCmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   "init",
 		Short: "Init account",
-		RunE: func(_ *cobra.Command, args []string) error {
-			return cmd.Run(
-				context.Background(),
-				provider.FromEnvironment(),
-				log.Default,
-			)
+		RunE: func(cobraCmd *cobra.Command, args []string) error {
+			return cmd.Run(cobraCmd.Context(), log.Default)
 		},
 	}
-
-	return initCmd
 }
 
-// Run runs the init logic
-func (cmd *InitCmd) Run(
-	ctx context.Context,
-	machine *provider.Machine,
-	logs log.Logger,
-) error {
-	devpodPath, err := config.GetConfigDir()
+// Run runs the init logic.
+func (cmd *InitCmd) Run(ctx context.Context, logs log.Logger) error {
+	devsyPath, err := config.GetConfigDir()
 	if err != nil {
 		return err
 	}
 
-	terraformPath := devpodPath + "/bin/terraform"
+	terraformPath := filepath.Join(devsyPath, "bin", "terraform")
 
 	project, err := options.FromEnvOrError(options.TERRAFORM_PROJECT)
 	if err != nil {
@@ -58,10 +47,5 @@ func (cmd *InitCmd) Run(
 		Project: project,
 	}
 
-	err = terraform.Install(provider)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return terraform.Install(ctx, provider)
 }

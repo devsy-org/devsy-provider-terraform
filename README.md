@@ -1,14 +1,14 @@
-# TERRAFORM Provider for DevPod
+# Terraform Provider for Devsy
 
-[![Join us on Slack!](docs/static/media/slack.svg)](https://slack.loft.sh/) [![Open in DevPod!](https://devpod.sh/assets/open-in-devpod.svg)](https://devpod.sh/open#https://github.com/loft-sh/devpod-provider-terraform)
+[![Open in Devsy!](https://img.shields.io/badge/open_in_devsy-8A2BE2?style=for-the-badge)](https://devsy.sh/open#https://github.com/devsy-org/devsy-provider-terraform)
 
 ## Getting started
 
-The provider is available for auto-installation using 
+The provider is available for auto-installation using
 
 ```sh
-devpod provider add terraform
-devpod provider use terraform
+devsy provider add terraform
+devsy provider use terraform
 ```
 
 Follow the on-screen instructions to complete the setup.
@@ -18,17 +18,17 @@ Needed variables will be:
 - TERRAFORM_PROJECT
 - REGION
 
-TERRAFORM_PROJECT points to a git repo or directory where the terraform project
+`TERRAFORM_PROJECT` points to a git repo or directory where the terraform project
 that defines the infra is stored.
 
 In this repo it would point to: `./examples/terraform-aws/`
 
-### Creating your first devpod env with terraform
+### Creating your first Devsy environment with terraform
 
 After the initial setup, just use:
 
 ```sh
-devpod up .
+devsy up .
 ```
 
 You'll need to wait for the machine and environment setup.
@@ -42,30 +42,30 @@ will be there where you will place your defaults for
 - IMAGE_DISK
 - INSTANCE_TYPE
 
-Keep also in mind that **stop/start is not supported right now on terraform provider**
+Keep also in mind that **stop/start is not supported right now on the terraform provider**.
 So the right thing to do is to handle data saving inside your terraform code
-(eg. use external data buckets)
+(e.g. use external data buckets).
 
 ### Customize the VM Instance
 
-This provides has the seguent options
+This provider has the following options:
 
-|    NAME           | REQUIRED |          DESCRIPTION                  |         DEFAULT         |
-|-------------------|----------|---------------------------------------|-------------------------|
-| DISK_SIZE                 | false    | The disk size to use.                 | 40  |
-| IMAGE_DISK                | false    | The disk image to use.                |     |
-| INSTANCE_TYPE             | false    | The machine type to use.              |     |
-| REGION                    | true     | The cloud region to create the        |     |
-|                           |          | VM in. E.g. us-west-1                 |     |
-| TERRAFORM_PROJECT         | true     | The path or repo where the            |     |
-|                           |          | terraform files are. E.g.             |     |
-|                           |          | ./examples/terraform or               |     |
-|                           |          | https://github.com/examples/terraform |     |
+| NAME              | REQUIRED | DESCRIPTION                                                                 | DEFAULT |
+|-------------------|----------|-----------------------------------------------------------------------------|---------|
+| TERRAFORM_PROJECT | true     | The path or repo where the terraform files are. E.g. ./examples/terraform   |         |
+| REGION            | true     | The cloud region to create the VM in. E.g. us-west-1                        |         |
+| DISK_SIZE         | false    | The disk size to use (GB).                                                  | 40      |
+| IMAGE_DISK        | false    | The disk image to use.                                                      |         |
+| INSTANCE_TYPE     | false    | The machine type to use.                                                    |         |
 
 Options can either be set in `env` or using for example:
 
 ```sh
-devpod provider set-options -o IMAGE_DISK=my-custom-ami
-devpod provider set-options -o INSTANCE_TYPE=t2.micro
-devpod provider set-options -o REGION=us-west-2
+devsy provider set-options -o IMAGE_DISK=my-custom-ami
+devsy provider set-options -o INSTANCE_TYPE=t2.micro
+devsy provider set-options -o REGION=us-west-2
 ```
+
+## Extra
+
+For more detail, see the [Devsy Documentation](https://devsy.sh/docs/managing-providers/what-are-providers).
