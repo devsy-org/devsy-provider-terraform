@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/devsy-org/devsy-provider-terraform/pkg/terraform"
-	"github.com/devsy-org/log"
 	"github.com/spf13/cobra"
 )
 
@@ -20,7 +19,7 @@ func NewStatusCmd() *cobra.Command {
 		Use:   "status",
 		Short: "Status an instance",
 		RunE: func(cobraCmd *cobra.Command, args []string) error {
-			terraformProvider, err := terraform.NewProvider(log.Default)
+			terraformProvider, err := terraform.NewProvider()
 			if err != nil {
 				return err
 			}
