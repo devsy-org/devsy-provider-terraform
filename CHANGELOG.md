@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/devsy-org/devsy-provider-terraform/compare/v1.0.0...v1.1.0) (2026-06-26)
+
+
+### Miscellaneous Chores
+
+* release 1.1.0 ([#12](https://github.com/devsy-org/devsy-provider-terraform/issues/12)) ([2c7b1ea](https://github.com/devsy-org/devsy-provider-terraform/commit/2c7b1ea9412d3c13ba37e530fc48a8d7c73113f0))
+
 ## 1.0.0 (2026-06-24)
 
 
