@@ -13,7 +13,6 @@ import (
 	"github.com/devsy-org/devsy/pkg/client"
 	"github.com/devsy-org/devsy/pkg/config"
 	"github.com/devsy-org/devsy/pkg/ssh"
-	"github.com/devsy-org/log"
 	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/hc-install/product"
 	"github.com/hashicorp/hc-install/releases"
@@ -26,14 +25,13 @@ import (
 
 type TerraformProvider struct {
 	Config     *options.Options
-	Log        log.Logger
 	Bin        string
 	Project    string
 	State      string
 	WorkingDir string
 }
 
-func NewProvider(logs log.Logger) (*TerraformProvider, error) {
+func NewProvider() (*TerraformProvider, error) {
 	providerConfig, err := options.FromEnv()
 	if err != nil {
 		return nil, err
@@ -54,7 +52,6 @@ func NewProvider(logs log.Logger) (*TerraformProvider, error) {
 	// create provider
 	provider := &TerraformProvider{
 		Config:     providerConfig,
-		Log:        logs,
 		Bin:        terraformPath,
 		Project:    project,
 		State:      filepath.Join(providerConfig.MachineFolder, "main.tfstate"),
