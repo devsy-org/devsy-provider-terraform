@@ -138,7 +138,7 @@ func buildProvider(cfg *buildConfig) (Provider, error) {
 		Name:         providerName,
 		Version:      cfg.version,
 		Description:  "Devsy on Terraform",
-		Icon:         "https://raw.githubusercontent.com/devsy-org/devsy/main/desktop/src/images/terraform.svg",
+		Icon:         "https://raw.githubusercontent.com/devsy-org/devsy/main/desktop/src/renderer/public/icons/providers/terraform.svg",
 		OptionGroups: buildOptionGroups(),
 		Options:      buildOptions(),
 		Agent:        buildAgent(),
