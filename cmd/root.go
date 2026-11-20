@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 
+	"github.com/devsy-org/devsy/logging"
 	"github.com/devsy-org/devsy/pkg/log"
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh"
@@ -19,11 +21,24 @@ func NewRootCmd() *cobra.Command {
 		SilenceUsage:  true,
 
 		PersistentPreRunE: func(cobraCmd *cobra.Command, args []string) error {
-			cfg := log.Config{Verbosity: 1}
-			if os.Getenv("DEVSY_DEBUG") == "true" {
-				cfg.Debug = true
+			cfg, invalid := logging.ResolveProvider(
+				os.Getenv("DEVSY_LOG_LEVEL"), os.Getenv("DEVSY_LOG_FORMAT"),
+			)
+			if invalid.Level {
+				log.Init(log.Config{DefaultLevel: log.LevelInfoName, Format: "json"})
+				return fmt.Errorf("invalid DEVSY_LOG_LEVEL")
 			}
-			log.Init(cfg)
+			if invalid.Format {
+				log.Init(log.Config{DefaultLevel: log.LevelInfoName, Format: "json"})
+				return fmt.Errorf("invalid DEVSY_LOG_FORMAT")
+			}
+			log.Init(
+				log.Config{
+					Level:        logging.LevelName(cfg.Level),
+					DefaultLevel: log.LevelInfoName,
+					Format:       string(cfg.Format),
+				},
+			)
 
 			return nil
 		},
