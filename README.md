@@ -64,6 +64,16 @@ devsy provider set-options -o INSTANCE_TYPE=t2.micro
 devsy provider set-options -o REGION=us-west-2
 ```
 
+## Logging
+
+Provider diagnostics go to standard error. `DEVSY_LOG_LEVEL` accepts `error`,
+`warn`, `info`, `debug`, or `trace`. The standalone default is `info`. Devsy
+passes its effective log level to the provider.
+
+`DEVSY_LOG_FORMAT` accepts `json`, `text`, `plain`, `logfmt`, or `auto`. Both
+settings are case insensitive. The default format and `auto` use JSON.
+Protocol and command output remain on their established streams.
+
 ## Extra
 
 For more detail, see the [Devsy Documentation](https://devsy.sh/docs/managing-providers/what-are-providers).
